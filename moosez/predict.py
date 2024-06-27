@@ -69,15 +69,7 @@ def predict(model_name: str, input_dir: str, output_dir: str, accelerator: str, 
 
 
     ### START OF nnUNetv2_predict
-
-    # Construct the command
-    command = f'nnUNetv2_predict -i {temp_input_dir} -o {output_dir} -d {task_number} -c {configuration}' \
-              f' -f all -tr {trainer} --disable_tta -device {accelerator}'
-
-    # Run the command
-    #proc = subprocess.run(command, shell=True, env=os.environ, stdout=subprocess.PIPE, close_fds=True)
-    #print(proc.stdout)
-    
+ 
     # Save the original sys.argv
     original_argv = sys.argv
     
