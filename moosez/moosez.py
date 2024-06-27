@@ -116,6 +116,7 @@ def main():
     print('')
     print(f'{constants.ANSI_VIOLET} {emoji.emojize(":globe_with_meridians:")} MODEL DOWNLOAD:{constants.ANSI_RESET}')
     print('')
+    constants.NNUNET_RESULTS_FOLDER
     model_path = constants.NNUNET_RESULTS_FOLDER
     file_utilities.create_directory(model_path)
     download.model(model_name, model_path)
@@ -244,7 +245,7 @@ def main():
                     f' | Time per dataset: {round(time_per_dataset, 2)} min {constants.ANSI_RESET}')
 
 
-def moose(model_name: str, input_dir: str, output_dir: str, accelerator: str) -> None:
+def moose(model_name: str, input_dir: str, output_dir: str, accelerator: str, model_download_folder:str) -> None:
     """
     Execute the MOOSE 2.0 image segmentation process.
 
@@ -277,13 +278,14 @@ def moose(model_name: str, input_dir: str, output_dir: str, accelerator: str) ->
     >>> moose('clin_ct_organs', '/path/to/input/images', '/path/to/save/output', 'cuda')
 
     """
-    model_path = constants.NNUNET_RESULTS_FOLDER
+    #model_path = constants.NNUNET_RESULTS_FOLDER
+    model_path = model_download_folder
     file_utilities.create_directory(model_path)
     download.model(model_name, model_path)
     custom_trainer_status = add_custom_trainers_to_local_nnunetv2()
     logging.info('- Custom trainer: ' + custom_trainer_status)
     input_validation.make_nnunet_compatible(input_dir)
-    predict.predict(model_name, input_dir, output_dir, accelerator)
+    predict.predict(model_name, input_dir, output_dir, accelerator, model_download_folder)
 
 
 if __name__ == '__main__':
