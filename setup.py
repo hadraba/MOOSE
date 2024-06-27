@@ -31,7 +31,7 @@ setup(
              ' preclinical-segmentation clinical-segmentation',
     packages=find_packages(),
     install_requires=[
-        'nnunetv2',
+        'nnunetv2 @ git+https://github.com/hadraba/nnUNet.git@MOREK-integration',
         'nibabel~=3.2.2',
         'halo~=0.0.31',
         'pandas~=1.4.1',
