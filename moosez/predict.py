@@ -38,7 +38,7 @@ from nnunetv2.inference.predict_from_raw_data import predict_entry_point
 from nnunetv2 import paths
 from importlib import reload
 
-def predict(model_name: str, input_dir: str, output_dir: str, accelerator: str, model_download_folder:str) -> None:
+def predict(task, model_name: str, input_dir: str, output_dir: str, accelerator: str, model_download_folder:str) -> None:
     """
     Runs the prediction using nnunet_predict.
 
@@ -57,7 +57,6 @@ def predict(model_name: str, input_dir: str, output_dir: str, accelerator: str, 
     # set the environment variables
     os.environ["nnUNet_results"] = str(model_download_folder)
     reload(paths)
-    
     # Preprocess the image
     temp_input_dir, resampled_image, moose_image_object = preprocess(input_dir, model_name)
     resampled_image_shape = resampled_image.shape
@@ -66,22 +65,21 @@ def predict(model_name: str, input_dir: str, output_dir: str, accelerator: str, 
     # choose the appropriate trainer for the model
     trainer = MODELS[model_name]["trainer"]
     configuration = MODELS[model_name]["configuration"]
-
-
     ### START OF nnUNetv2_predict
  
     # Save the original sys.argv
     original_argv = sys.argv
-    
+        
     # Define the new arguments as if they were passed from the command line
     sys.argv = ['predict_entry_point.py', '-i', str(temp_input_dir), '-o', str(output_dir), '-d', task_number, '-c', configuration, '-f', 'all', '-tr', trainer, '--disable_tta', '-device', accelerator]
-    predict_entry_point()
+    predict_entry_point(task)
     
     # Restore the original sys.argv
     sys.argv = original_argv
     
     ### END OF nnUNetv2_predict
-    print()
+
+    task.update(message = "Postprocessing images…")
 
     original_image_files = file_utilities.get_files(input_dir, '.nii.gz')
 
