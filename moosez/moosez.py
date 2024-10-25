@@ -28,6 +28,7 @@ import colorama
 import emoji
 import numpy
 import pandas as pd
+import json
 import multiprocessing as mp
 import concurrent.futures
 from moosez import constants
@@ -303,7 +304,7 @@ def main():
     output_manager.log_update('----------------------------------------------------------------------------------------------------')
 
 
-def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float]] | SimpleITK.Image, model_names: str | list[str], output_dir: str = None, accelerator: str = None) -> None:
+def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float]] | SimpleITK.Image, model_names: str | list[str], output_dir: str = None, accelerator: str = None, model_download_folder:str = None) -> None:
     """
     Execute the MOOSE 3.0 image segmentation process.
 
@@ -322,6 +323,9 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
     :param accelerator: Specifies the type of accelerator to be used. Common values include "cpu" and "cuda" for
                         GPU acceleration.
     :type accelerator: str
+    
+    :param model_download_folder: Specifies where the trained pickle will be saved on disk
+    :type model_download_folder: str
 
     :return: None
     :rtype: None
@@ -353,16 +357,25 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
         model_names = [model_names]
 
     output_manager = system.OutputManager(False, False)
-
-    model_path = system.MODELS_DIRECTORY_PATH
+        
+    if(model_download_folder):
+        model_path = model_download_folder
+        system.MODELS_DIRECTORY_PATH = model_download_folder
+    else:
+        model_path = system.MODELS_DIRECTORY_PATH
+    
+    task.update(message = "Downloading model…")
     file_utilities.create_directory(model_path)
     model_routine = models.construct_model_routine(model_names, output_manager)
 
+    task.update(message = "Preprocessing…")
+    
     for desired_spacing, model_workflows in model_routine.items():
         resampled_array = image_processing.ImageResampler.resample_image_SimpleITK_DASK_array(image, 'bspline', desired_spacing)
-
+        
+        task.update(message = "Segmenting…")
         for model_workflow in model_workflows:
-            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, os.devnull)
+            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, os.devnull, task = task)
 
             if len(model_workflow) == 2:
                 inference_fov_intensities = model_workflow[1].limit_fov["inference_fov_intensities"]
@@ -386,6 +399,11 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
             if output_dir is None:
                 output_dir = os.path.dirname(input_data) if isinstance(input_data, str) else '.'
             segmentation_image_path = os.path.join(output_dir, f"{model_workflow.target_model.multilabel_prefix}segmentation_{file_name}.nii.gz")
+            
+            file_path = os.path.join(output_dir, "dataset.json")
+            with open(file_path, "w") as json_file:
+                json.dump(model_workflow.target_model.dataset, json_file, indent=4)
+            
             SimpleITK.WriteImage(resampled_segmentation, segmentation_image_path)
 
 

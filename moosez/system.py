@@ -106,11 +106,13 @@ class OutputManager:
     def log_update(self, text: str):
         if self.verbose_log and self.logger:
             self.logger.info(text)
+        print(text)
 
     def console_update(self, text: str | RenderableType):
         if isinstance(text, str):
             text = Text.from_ansi(text)
         self.console.print(text)
+        print(text)
 
     def spinner_update(self, text: str = None):
         if self.spinner.enabled:

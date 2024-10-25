@@ -80,7 +80,7 @@ def preprocessing_iterator_from_array(image_array: np.ndarray, image_properties:
     return iterator, locations
 
 
-def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model, accelerator: str, nnunet_log_filename: str = None):
+def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model, accelerator: str, nnunet_log_filename: str = None, task = None):
     image_array = image_array[None, ...]
 
     original_stdout = sys.stdout
@@ -98,7 +98,7 @@ def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model,
         }
 
         iterator, chunk_locations = preprocessing_iterator_from_array(image_array, image_properties, predictor)
-        segmentations = predictor.predict_from_data_iterator(iterator)
+        segmentations = predictor.predict_from_data_iterator(iterator, task = task)
         segmentations = [segmentation[None, ...] for segmentation in segmentations]
         combined_segmentations = image_processing.ImageChunker.chunks_to_array(segmentations, chunk_locations, image_array.shape)
 
