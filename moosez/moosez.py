@@ -395,16 +395,18 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
             segmentation.SetOrigin(image.GetOrigin())
             segmentation.SetDirection(image.GetDirection())
             resampled_segmentation = image_processing.ImageResampler.resample_segmentation(image, segmentation)
-
-            if output_dir is None:
-                output_dir = os.path.dirname(input_data) if isinstance(input_data, str) else '.'
-            segmentation_image_path = os.path.join(output_dir, f"{model_workflow.target_model.multilabel_prefix}segmentation_{file_name}.nii.gz")
+            resampled_segmentation = SimpleITK.GetArrayFromImage(resampled_segmentation)
+            return resampled_segmentation, model_workflow.target_model.dataset
+        
+            #if output_dir is None:
+            #    output_dir = os.path.dirname(input_data) if isinstance(input_data, str) else '.'
+            #segmentation_image_path = os.path.join(output_dir, f"{model_workflow.target_model.multilabel_prefix}segmentation_{file_name}.nii.gz")
             
-            file_path = os.path.join(output_dir, "dataset.json")
-            with open(file_path, "w") as json_file:
-                json.dump(model_workflow.target_model.dataset, json_file, indent=4)
+            #file_path = os.path.join(output_dir, "dataset.json")
+            #with open(file_path, "w") as json_file:
+            #    json.dump(model_workflow.target_model.dataset, json_file, indent=4)
             
-            SimpleITK.WriteImage(resampled_segmentation, segmentation_image_path)
+            #SimpleITK.WriteImage(resampled_segmentation, segmentation_image_path)
 
 
 def moose_subject(subject: str, subject_index: int, number_of_subjects: int, model_routine: dict, accelerator: str,
