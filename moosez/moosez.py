@@ -378,7 +378,7 @@ def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, 
         
         task.update(message = "Segmenting…")
         for model_workflow in model_workflows:
-            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, os.devnull, task = task)
+            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, output_manager, task = task)
 
             if len(model_workflow) == 2:
                 inference_fov_intensities = model_workflow[1].limit_fov["inference_fov_intensities"]
