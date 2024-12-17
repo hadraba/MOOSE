@@ -17,12 +17,13 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import dask
-import sys
 import torch
 import numpy as np
 import SimpleITK
+from typing import Tuple, List, Dict, Iterator
 from moosez import models
 from moosez import image_processing
+from moosez import system
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
 from nnunetv2.inference.predict_from_raw_data import predict_entry_point
@@ -47,7 +48,7 @@ def initialize_predictor(model: models.Model, accelerator: str) -> nnUNetPredict
 
 
 @dask.delayed
-def process_case(preprocessor, chunk: np.ndarray, chunk_properties: dict, predictor: nnUNetPredictor, location: tuple) -> dict:
+def process_case(preprocessor, chunk: np.ndarray, chunk_properties: Dict, predictor: nnUNetPredictor, location: Tuple) -> Dict:
     data, seg = preprocessor.run_case_npy(chunk,
                                           None,
                                           chunk_properties,
@@ -62,10 +63,15 @@ def process_case(preprocessor, chunk: np.ndarray, chunk_properties: dict, predic
     return {'data': data_tensor, 'data_properties': chunk_properties, 'ofile': None, 'location': location}
 
 
-def preprocessing_iterator_from_array(image_array: np.ndarray, image_properties: dict, predictor: nnUNetPredictor) -> (iter, list):
+def preprocessing_iterator_from_array(image_array: np.ndarray, image_properties: Dict, predictor: nnUNetPredictor, output_manager: system.OutputManager) -> Tuple[Iterator, List[Dict]]:
     overlap_per_dimension = (0, 20, 20, 20)
     splits = image_processing.ImageChunker.determine_splits(image_array)
     chunks, locations = image_processing.ImageChunker.array_to_chunks(image_array, splits, overlap_per_dimension)
+
+    if len(chunks) == 1:
+        output_manager.log_update(f"     - Image below chunking threshold. Single chunk of size: {'x'.join(map(str, chunks[0].shape))}")
+    else:
+        output_manager.log_update(f"     - Image split into {len(chunks)} chunks of size: {'x'.join(map(str, chunks[0].shape))}")
 
     preprocessor = predictor.configuration_manager.preprocessor_class(verbose=predictor.verbose)
 
@@ -80,18 +86,10 @@ def preprocessing_iterator_from_array(image_array: np.ndarray, image_properties:
     return iterator, locations
 
 
-def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model, accelerator: str, nnunet_log_filename: str = None, task = None):
+def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model, accelerator: str, output_manager: system.OutputManager, task = None):
     image_array = image_array[None, ...]
 
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-    nnunet_log_file = None
-    if nnunet_log_filename is not None:
-        nnunet_log_file = open(nnunet_log_filename, "a")
-        sys.stdout = nnunet_log_file
-        sys.stderr = nnunet_log_file
-
-    try:
+    with output_manager.manage_nnUNet_output():
         predictor = initialize_predictor(model, accelerator)
         image_properties = {
             'spacing': model.voxel_spacing
@@ -101,17 +99,12 @@ def predict_from_array_by_iterator(image_array: np.ndarray, model: models.Model,
         segmentations = predictor.predict_from_data_iterator(iterator, task = task)
         segmentations = [segmentation[None, ...] for segmentation in segmentations]
         combined_segmentations = image_processing.ImageChunker.chunks_to_array(segmentations, chunk_locations, image_array.shape)
+        output_manager.log_update(f"     - Combined them to an {'x'.join(map(str, combined_segmentations.shape))} array")
 
-        return np.squeeze(combined_segmentations)
-
-    finally:
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-        if nnunet_log_filename is not None and nnunet_log_file is not None:
-            nnunet_log_file.close()
+    return np.squeeze(combined_segmentations)
 
 
-def cropped_fov_prediction_pipeline(image, segmentation_array, workflow: models.ModelWorkflow, accelerator, nnunet_log_filename):
+def cropped_fov_prediction_pipeline(image, segmentation_array, workflow: models.ModelWorkflow, accelerator, output_manager: system.OutputManager):
     """
     Process segmentation by resampling, limiting FOV, and predicting.
 
@@ -120,7 +113,7 @@ def cropped_fov_prediction_pipeline(image, segmentation_array, workflow: models.
         segmentation_array (np.array): The segmentation array to be processed.
         workflow (models.ModelWorkflow): List of routines where the second element contains model info.
         accelerator (any): The accelerator used for prediction.
-        nnunet_log_filename (str): Path to the nnunet log file.
+        output_manager (output_manager: system.OutputManager): for console and logging.
 
     Returns:
         model (str): The model name used in the process.
@@ -161,7 +154,7 @@ def cropped_fov_prediction_pipeline(image, segmentation_array, workflow: models.
 
     # Predict the limited FOV segmentation
     limited_fov_segmentation_array = predict_from_array_by_iterator(limited_fov_image_array, target_model,
-                                                                            accelerator, nnunet_log_filename)
+                                                                            accelerator, output_manager)
 
     # Expand the segmentation to the original FOV
     expanded_segmentation_array = image_processing.expand_segmentation_fov(limited_fov_segmentation_array, original_fov_info)

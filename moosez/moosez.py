@@ -31,6 +31,7 @@ import pandas as pd
 import json
 import multiprocessing as mp
 import concurrent.futures
+from typing import Union, Tuple, List, Dict
 from moosez import constants
 from moosez import download
 from moosez import file_utilities
@@ -164,7 +165,6 @@ def main():
     output_manager.log_update('                                     STARTING MOOSE-Z V.3.0.0                                       ')
     output_manager.log_update('----------------------------------------------------------------------------------------------------')
 
-
     # ----------------------------------
     # DOWNLOADING THE MODEL
     # ----------------------------------
@@ -255,9 +255,8 @@ def main():
         with concurrent.futures.ProcessPoolExecutor(max_workers=moose_instances, mp_context=mp_context) as executor:
             futures = []
             for i, (subject, accelerator) in enumerate(zip(moose_compliant_subjects, accelerator_assignments)):
-                futures.append(executor.submit(moose_subject, subject, i, num_subjects,
-                                               model_routine, accelerator,
-                                               None, benchmark))
+                futures.append(executor.submit(moose_subject, subject, i, num_subjects, model_routine,
+                                               accelerator, None, benchmark))
 
             for future in concurrent.futures.as_completed(futures):
                 if benchmark:
@@ -272,9 +271,8 @@ def main():
 
     else:
         for i, subject in enumerate(moose_compliant_subjects):
-            subject_performance = moose_subject(subject, i, num_subjects,
-                                                model_routine, accelerator,
-                                                output_manager, benchmark)
+            subject_performance = moose_subject(subject, i, num_subjects, model_routine,
+                                                accelerator, output_manager, benchmark)
             if benchmark:
                 subject_performance_parameters.append(subject_performance)
 
@@ -304,58 +302,57 @@ def main():
     output_manager.log_update('----------------------------------------------------------------------------------------------------')
 
 
-def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float]] | SimpleITK.Image, model_names: str | list[str], output_dir: str = None, accelerator: str = None, model_download_folder:str = None) -> None:
+def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]], SimpleITK.Image],
+          model_names: Union[str, List[str]], output_dir: str = None, accelerator: str = None, model_download_folder:str = None) -> Tuple[Union[List[str], List[SimpleITK.Image], List[numpy.ndarray]], List[models.Model]]:
     """
     Execute the MOOSE 3.0 image segmentation process.
 
-    :param input_data: This can be either:
-                       1. A file path to the NIfTI file (as a string),
-                       2. A tuple containing a numpy array and the corresponding spacing (as (array, spacing)),
-                       3. A SimpleITK image.
+    :param input_data: The input data to process, which can be one of the following:
+                       - str: A file path to a NIfTI file.
+                       - tuple[numpy.ndarray, tuple[float, float, float]]: A tuple containing a numpy array and spacing.
+                       - SimpleITK.Image: An image object to process.
+                       
+    :param model_names: The name(s) of the model(s) to be used for segmentation.
+    :type model_names: str or list[str]
 
-    :param model_names: The name of the model to be used for predictions. This model will be downloaded and used
-                       for the image segmentation process.
-    :type model_names: str
+    :param output_dir: Path to the directory where the output will be saved if the input is a file path.
+    :type output_dir: Optional[str]
 
-    :param output_dir: Path to the directory where the segmented output will be saved.
-    :type output_dir: str
+    :param accelerator: Specifies the accelerator type, e.g., "cpu" or "cuda".
+    :type accelerator: Optional[str]
 
-    :param accelerator: Specifies the type of accelerator to be used. Common values include "cpu" and "cuda" for
-                        GPU acceleration.
-    :type accelerator: str
-    
-    :param model_download_folder: Specifies where the trained pickle will be saved on disk
-    :type model_download_folder: str
-
-    :return: None
-    :rtype: None
+    :return: The output type aligns with the input type:
+             - str (file path): If `input_data` is a file path.
+             - SimpleITK.Image: If `input_data` is a SimpleITK.Image.
+             - numpy.ndarray: If `input_data` is a numpy array.
+    :rtype: str or SimpleITK.Image or numpy.ndarray
 
     :Example:
-    >>> moose('/path/to/input/file', '[list, of, models]', '/path/to/save/output', 'cuda')
-    >>> moose((numpy_array, (1.5, 1.5, 1.5)), 'model_name', '/path/to/save/output', 'cuda')
-    >>> moose(simple_itk_image, 'model_name', '/path/to/save/output', 'cuda')
-
+    >>> moose('/path/to/input/file', '[list, of, models]', '/path/to/output', 'cuda')
+    >>> moose((numpy_array, (1.5, 1.5, 1.5)), 'model_name', '/path/to/output', 'cuda')
+    >>> moose(simple_itk_image, 'model_name', '/path/to/output', 'cuda')
     """
-
+    # Load the image and set a default filename based on input type
     if isinstance(input_data, str):
         image = SimpleITK.ReadImage(input_data)
         file_name = file_utilities.get_nifti_file_stem(input_data)
     elif isinstance(input_data, SimpleITK.Image):
         image = input_data
         file_name = 'image_from_simpleitk'
-    elif isinstance(input_data, tuple) and isinstance(input_data[0], numpy.ndarray) and isinstance(input_data[1],
-                                                                                                   tuple):
+    elif isinstance(input_data, tuple) and isinstance(input_data[0], numpy.ndarray) and isinstance(input_data[1], tuple):
         numpy_array, spacing = input_data
         image = SimpleITK.GetImageFromArray(numpy_array)
         image.SetSpacing(spacing)
         file_name = 'image_from_array'
     else:
-        raise ValueError(
-            "Input data must be either a file path (str), a SimpleITK.Image, or a tuple (numpy array, spacing).")
+        raise ValueError("Invalid input format. `input_data` must be either a file path (str), "
+                         "a SimpleITK.Image, or a tuple (numpy array, spacing).")
 
+    # Ensure model_names is a list for consistency
     if isinstance(model_names, str):
         model_names = [model_names]
 
+    # Output manager and model routine setup
     output_manager = system.OutputManager(False, False)
         
     if(model_download_folder):
@@ -370,6 +367,12 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
 
     task.update(message = "Preprocessing…")
     
+    if accelerator is None:
+        accelerator, _ = system.check_device(output_manager)
+
+    # Perform segmentation
+    generated_segmentations = []
+    used_models = []
     for desired_spacing, model_workflows in model_routine.items():
         resampled_array = image_processing.ImageResampler.resample_image_SimpleITK_DASK_array(image, 'bspline', desired_spacing)
         
@@ -383,34 +386,37 @@ def moose(task, input_data: str | tuple[numpy.ndarray, tuple[float, float, float
                     inference_fov_intensities = [inference_fov_intensities]
 
                 existing_intensities = numpy.unique(segmentation_array)
-                if not all([intensity in existing_intensities for intensity in inference_fov_intensities]):
+                if not all(intensity in existing_intensities for intensity in inference_fov_intensities):
                     continue
 
-                segmentation_array, desired_spacing = predict.cropped_fov_prediction_pipeline(image, segmentation_array,
-                                                                                              model_workflow,
-                                                                                              accelerator, os.devnull)
+                segmentation_array, desired_spacing = predict.cropped_fov_prediction_pipeline(
+                    image, segmentation_array, model_workflow, accelerator, output_manager)
 
             segmentation = SimpleITK.GetImageFromArray(segmentation_array)
             segmentation.SetSpacing(desired_spacing)
             segmentation.SetOrigin(image.GetOrigin())
             segmentation.SetDirection(image.GetDirection())
             resampled_segmentation = image_processing.ImageResampler.resample_segmentation(image, segmentation)
-            resampled_segmentation = SimpleITK.GetArrayFromImage(resampled_segmentation)
-            return resampled_segmentation, model_workflow.target_model.dataset
-        
-            #if output_dir is None:
-            #    output_dir = os.path.dirname(input_data) if isinstance(input_data, str) else '.'
-            #segmentation_image_path = os.path.join(output_dir, f"{model_workflow.target_model.multilabel_prefix}segmentation_{file_name}.nii.gz")
-            
-            #file_path = os.path.join(output_dir, "dataset.json")
-            #with open(file_path, "w") as json_file:
-            #    json.dump(model_workflow.target_model.dataset, json_file, indent=4)
-            
-            #SimpleITK.WriteImage(resampled_segmentation, segmentation_image_path)
+
+            image_output = None
+            if isinstance(input_data, str):  # Return file path if input was a file path
+                if output_dir is None:
+                    output_dir = os.path.dirname(input_data)
+                image_output = os.path.join(output_dir, f"{model_workflow.target_model.multilabel_prefix}segmentation_{file_name}.nii.gz")
+                SimpleITK.WriteImage(resampled_segmentation, image_output)
+            elif isinstance(input_data, SimpleITK.Image):  # Return SimpleITK.Image if input was SimpleITK.Image
+                image_output = resampled_segmentation
+            elif isinstance(input_data, tuple):  # Return numpy array if input was numpy array
+                image_output = SimpleITK.GetArrayFromImage(resampled_segmentation)
+
+            generated_segmentations.append(image_output)
+            used_models.append(model_workflow.target_model)
+
+    return generated_segmentations, used_models
 
 
-def moose_subject(subject: str, subject_index: int, number_of_subjects: int, model_routine: dict, accelerator: str,
-                  output_manager: system.OutputManager | None, benchmark: bool = False):
+def moose_subject(subject: str, subject_index: int, number_of_subjects: int, model_routine: Dict, accelerator: str,
+                  output_manager: Union[system.OutputManager, None], benchmark: bool = False):
     # SETTING UP DIRECTORY STRUCTURE
     subject_name = os.path.basename(subject)
 
@@ -466,7 +472,7 @@ def moose_subject(subject: str, subject_index: int, number_of_subjects: int, mod
             model_time_start = time.time()
             output_manager.spinner_update(f'[{subject_index + 1}/{number_of_subjects}] Running prediction for {subject_name} using {model_workflow[0]}...')
             output_manager.log_update(f'   - Model {model_workflow.target_model}')
-            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, output_manager.nnunet_log_filename)
+            segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, output_manager)
 
             if len(model_workflow) == 2:
                 inference_fov_intensities = model_workflow[1].limit_fov["inference_fov_intensities"]
@@ -475,12 +481,12 @@ def moose_subject(subject: str, subject_index: int, number_of_subjects: int, mod
 
                 existing_intensities = numpy.unique(segmentation_array)
                 if not all([intensity in existing_intensities for intensity in inference_fov_intensities]):
-                    output_manager.spinner_update(f'[{subject_index + 1}/{number_of_subjects}] Organ to crop from not in initial FOV...')
+                    output_manager.spinner_warn(f'[{subject_index + 1}/{number_of_subjects}] {subject_name}: organ to crop from not in initial FOV. No segmentation result ({model_workflow.target_model}) for this subject.')
                     output_manager.log_update("     - Organ to crop from not in initial FOV.")
                     performance_observer.time_phase()
                     continue
 
-                segmentation_array, desired_spacing = predict.cropped_fov_prediction_pipeline(image, segmentation_array, model_workflow, accelerator, output_manager.nnunet_log_filename)
+                segmentation_array, desired_spacing = predict.cropped_fov_prediction_pipeline(image, segmentation_array, model_workflow, accelerator, output_manager)
 
             segmentation = SimpleITK.GetImageFromArray(segmentation_array)
             segmentation.SetSpacing(desired_spacing)
@@ -493,14 +499,28 @@ def moose_subject(subject: str, subject_index: int, number_of_subjects: int, mod
             SimpleITK.WriteImage(resampled_segmentation, segmentation_image_path)
             output_manager.log_update(f"     - Prediction complete for {model_workflow.target_model} within {round((time.time() - model_time_start)/ 60, 1)} min.")
 
-            # ----------------------------------
-            # EXTRACT VOLUME STATISTICS
-            # ----------------------------------
-            output_manager.spinner_update(f'[{subject_index + 1}/{number_of_subjects}] Extracting CT volume statistics for {subject_name} ({model_workflow.target_model})...')
+            # -----------------------------------------------
+            # EXTRACT VOLUME STATISTICS AND HOUNSFIELD UNITS
+            # -----------------------------------------------
+            output_manager.spinner_update(
+                f'[{subject_index + 1}/{number_of_subjects}] Extracting CT volume statistics for {subject_name} ({model_workflow.target_model})...')
             output_manager.log_update(f'     - Extracting volume statistics for {model_workflow.target_model}')
-            out_csv = os.path.join(stats_dir, model_workflow.target_model.multilabel_prefix + subject_name + '_ct_volume.csv')
-            image_processing.get_shape_statistics(resampled_segmentation, model_workflow.target_model, out_csv)
-            output_manager.spinner_update(f'{constants.ANSI_GREEN} [{subject_index + 1}/{number_of_subjects}] CT volume extracted for {subject_name}! {constants.ANSI_RESET}')
+            out_vol_stats_csv = os.path.join(stats_dir,
+                                             model_workflow.target_model.multilabel_prefix + subject_name + '_ct_volume.csv')
+            image_processing.get_shape_statistics(resampled_segmentation, model_workflow.target_model,
+                                                  out_vol_stats_csv)
+            output_manager.spinner_update(
+                f'{constants.ANSI_GREEN} [{subject_index + 1}/{number_of_subjects}] CT volume extracted for {subject_name}! {constants.ANSI_RESET}')
+            time.sleep(1)
+            output_manager.spinner_update(
+            f'[{subject_index + 1}/{number_of_subjects}] Extracting CT hounsfield statistics for {subject_name} ({model_workflow.target_model})...')
+            output_manager.log_update(f'     - Extracting hounsfield statistics for {model_workflow.target_model}')
+            out_hu_stats_csv = os.path.join(stats_dir,
+                                        model_workflow.target_model.multilabel_prefix + subject_name + '_ct_hu_values.csv')
+            image_processing.get_intensity_statistics(image, resampled_segmentation, model_workflow.target_model,
+                                                  out_hu_stats_csv)
+            output_manager.spinner_update(
+            f'{constants.ANSI_GREEN} [{subject_index + 1}/{number_of_subjects}] CT hounsfield statistics extracted for {subject_name}! {constants.ANSI_RESET}')
             time.sleep(1)
 
             # ----------------------------------
