@@ -24,6 +24,7 @@ import emoji
 import numpy
 import pandas as pd
 import multiprocessing as mp
+import json
 import concurrent.futures
 from typing import Union, Tuple, List, Iterator
 from moosez import constants
@@ -353,8 +354,8 @@ def main():
     output_manager.log_update('----------------------------------------------------------------------------------------------------')
 
 
-def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]], SimpleITK.Image],
-          model_names: Union[str, List[str]], output_dir: str = None, accelerator: str = None) -> Tuple[Union[List[str], List[SimpleITK.Image], List[numpy.ndarray]], List[models.Model]]:
+def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]], SimpleITK.Image],
+          model_names: Union[str, List[str]], output_dir: str = None, accelerator: str = None, model_download_folder:str = None) -> Tuple[Union[List[str], List[SimpleITK.Image], List[numpy.ndarray]], List[models.Model]]:
     """
     Execute the MOOSE 3.0 image segmentation process.
 
@@ -404,12 +405,21 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
     if isinstance(model_names, str):
         model_names = [model_names]
 
-    output_manager = system.OutputManager(False, False)
+    output_manager = system.OutputManager(True, False)
 
     add_custom_trainers_to_local_nnunetv2()
-    model_path = system.MODELS_DIRECTORY_PATH
+
+    if model_download_folder:
+        model_path = model_download_folder
+        system.MODELS_DIRECTORY_PATH = model_download_folder
+    else:
+        model_path = system.MODELS_DIRECTORY_PATH
+
+    task.update(message="Downloading model…")
     file_utilities.create_directory(model_path)
     model_workflows = models.construct_model_workflows(model_names, output_manager)
+
+    task.update(message="Preprocessing…")
 
     if accelerator is None:
         accelerator, _ = system.check_device(output_manager)
@@ -420,6 +430,7 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
     generated_segmentations = []
     used_models = []
 
+    task.update(message="Segmenting…")
     for segmentation_image, model in run_workflows(image, model_workflows, output_manager, performance_observer, accelerator, subjects_information):
         image_output = None
         if isinstance(input_data, str):
@@ -435,6 +446,7 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
 
         generated_segmentations.append(image_output)
         used_models.append(model)
+
 
     return generated_segmentations, used_models
 
