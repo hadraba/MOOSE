@@ -384,6 +384,9 @@ def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, 
     >>> moose((numpy_array, (1.5, 1.5, 1.5)), 'model_name', '/path/to/output', 'cuda')
     >>> moose(simple_itk_image, 'model_name', '/path/to/output', 'cuda')
     """
+    #Copy custom trainer to nnunetv2, TODO in the future: consider running main() function instead
+    add_custom_trainers_to_local_nnunetv2()
+    
     # Load the image and set a default filename based on input type
     if isinstance(input_data, str):
         image_raw = image_processing.image_read(input_data)
