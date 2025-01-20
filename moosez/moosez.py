@@ -29,6 +29,7 @@ import emoji
 import numpy
 import pandas as pd
 import multiprocessing as mp
+import json
 import concurrent.futures
 from typing import Union, Tuple, List, Dict
 from moosez import constants
@@ -301,8 +302,8 @@ def main():
     output_manager.log_update('----------------------------------------------------------------------------------------------------')
 
 
-def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]], SimpleITK.Image],
-          model_names: Union[str, List[str]], output_dir: str = None, accelerator: str = None) -> Tuple[Union[List[str], List[SimpleITK.Image], List[numpy.ndarray]], List[models.Model]]:
+def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]], SimpleITK.Image],
+          model_names: Union[str, List[str]], output_dir: str = None, accelerator: str = None, model_download_folder:str = None) -> Tuple[Union[List[str], List[SimpleITK.Image], List[numpy.ndarray]], List[models.Model]]:
     """
     Execute the MOOSE 3.0 image segmentation process.
 
@@ -353,9 +354,18 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
 
     # Output manager and model routine setup
     output_manager = system.OutputManager(False, False)
-    model_path = system.MODELS_DIRECTORY_PATH
+    
+    if(model_download_folder):
+        model_path = model_download_folder
+        system.MODELS_DIRECTORY_PATH = model_download_folder
+    else:
+        model_path = system.MODELS_DIRECTORY_PATH
+    
+    task.update(message = "Downloading model…")
     file_utilities.create_directory(model_path)
     model_routine = models.construct_model_routine(model_names, output_manager)
+    
+    task.update(message = "Preprocessing…")
 
     if accelerator is None:
         accelerator, _ = system.check_device(output_manager)
@@ -366,6 +376,7 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
     for desired_spacing, model_workflows in model_routine.items():
         resampled_array = image_processing.ImageResampler.resample_image_SimpleITK_DASK_array(image, 'bspline', desired_spacing)
 
+        task.update(message = "Segmenting…")
         for model_workflow in model_workflows:
             segmentation_array = predict.predict_from_array_by_iterator(resampled_array, model_workflow[0], accelerator, output_manager)
 
@@ -400,7 +411,7 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
 
             generated_segmentations.append(image_output)
             used_models.append(model_workflow.target_model)
-
+            print("x")
     return generated_segmentations, used_models
 
 
