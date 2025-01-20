@@ -334,6 +334,7 @@ def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, 
     """
     #Copy custom trainer to nnunetv2, TODO in the future: consider running main() function instead
     add_custom_trainers_to_local_nnunetv2()
+    output_manager = system.OutputManager(True, False)
     
     # Load the image and set a default filename based on input type
     if isinstance(input_data, str):
