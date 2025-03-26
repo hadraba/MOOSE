@@ -129,7 +129,12 @@ MODEL_METADATA = {
         KEY_URL: "https://model.s.mdforge.com/Dataset112_DentalSegmentator_v100_moose.zip",
         KEY_FOLDER_NAME: "Dataset112_DentalSegmentator_v100",
         KEY_LIMIT_FOV: None
-    }
+    },
+     "clin_ct_dental": {
+         KEY_URL: "https://model.s.mdforge.com/Dataset112_DentalSegmentator_v100_moose.zip",
+         KEY_FOLDER_NAME: "Dataset112_DentalSegmentator_v100",
+         KEY_LIMIT_FOV: None
+     }
 }
 
 AVAILABLE_MODELS = MODEL_METADATA.keys()
