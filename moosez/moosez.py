@@ -405,7 +405,7 @@ def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, 
     if isinstance(model_names, str):
         model_names = [model_names]
 
-    output_manager = system.OutputManager(True, False)
+    output_manager = system.OutputManager(False, False)
 
     add_custom_trainers_to_local_nnunetv2()
 
@@ -447,7 +447,7 @@ def moose(task, input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, 
         generated_segmentations.append(image_output)
         used_models.append(model)
 
-
+    output_manager.spinner_stop()
     return generated_segmentations, used_models
 
 
