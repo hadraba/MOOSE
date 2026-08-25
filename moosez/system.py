@@ -270,5 +270,23 @@ try:
     MOOSE_VERSION = importlib.metadata.version("moosez")
 except importlib.metadata.PackageNotFoundError:
     MOOSE_VERSION = "0.0.0"
+
+# Load DATA_PATH from .env file if available, otherwise use default MOOSE package directory
+def _get_models_directory_path() -> str:
+    """
+    Get models directory path from environment or .env file.
+    Priority: 
+    1. DATA_PATH environment variable (from .env or system env) 
+    2. Default MOOSE package directory
+    """
+    # Check if DATA_PATH is set in environment
+    data_path = os.getenv("DATA_PATH")
+    if data_path:
+        return os.path.join(data_path, 'models', 'nnunet_trained_models')
+    
+    # Fall back to default MOOSE package directory
+    moose_root = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(moose_root, 'models', 'nnunet_trained_models')
+
 MOOSE_ROOT_PATH: str = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIRECTORY_PATH: str = os.path.join(MOOSE_ROOT_PATH, 'models', 'nnunet_trained_models')
+MODELS_DIRECTORY_PATH: str = _get_models_directory_path()
