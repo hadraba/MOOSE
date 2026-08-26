@@ -405,8 +405,11 @@ def moose(input_data: Union[str, Tuple[numpy.ndarray, Tuple[float, float, float]
         model_names = [model_names]
 
     output_manager = system.OutputManager(False, False)
-
-    add_custom_trainers_to_local_nnunetv2()
+    
+    # For custom trainers, check if the environment variable is set to enable them
+    if os.getenv("MOOSE_ENABLE_CUSTOM_TRAINERS", "false").lower() == "true":
+        add_custom_trainers_to_local_nnunetv2()
+        
     model_path = system.MODELS_DIRECTORY_PATH
     file_utilities.create_directory(model_path)
     model_workflows = workflows.construct_workflows(model_names, output_manager)
