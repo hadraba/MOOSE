@@ -271,28 +271,41 @@ try:
 except importlib.metadata.PackageNotFoundError:
     MOOSE_VERSION = "0.0.0"
 
-# Load DATA_PATH from environment variable, otherwise use default MOOSE package directory
+# Load DATA_PATH from centralized config (Morek integration)
 def _get_models_directory_path() -> str:
     """
-    Get models directory path from environment variables.
-    Priority: 
-    1. UNET_MODEL_PATH - direct path to models directory
-    2. DATA_PATH - parent directory containing models folder
-    3. Default - MOOSE package directory
+    Get models directory path from Morek centralized config file.
+    
+    Uses src_core.internal.config.get_moose_models_directory() which respects
+    DATA_PATH environment variable and on-premise deployment settings.
+    
+    When running in Morek:
+        - Always uses DATA_PATH/models/nnunet_trained_models
+        - Never falls back to moosez package directory
+        - Downloads allowed only when ON_PREMISE=0
+    
+    When running standalone (non-Morek):
+        - Checks UNET_MODEL_PATH env var first
+        - Then checks DATA_PATH env var
+        - Falls back to moosez package directory if neither is set
     """
-    # Check for direct model path
-    model_path = os.getenv("UNET_MODEL_PATH")
-    if model_path:
-        return os.path.abspath(os.path.expanduser(model_path))
-    
-    # Check for data path (models at DATA_PATH/models/nnunet_trained_models)
-    data_path = os.getenv("DATA_PATH")
-    if data_path:
-        return os.path.abspath(os.path.expanduser(os.path.join(data_path, 'models', 'nnunet_trained_models')))
-    
-    # Fall back to default MOOSE package directory
-    moose_root = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(moose_root, 'models', 'nnunet_trained_models')
+    try:
+        from src_core.internal.config import get_moose_models_directory
+        # Morek environment: use centralized config (DATA_PATH validated on app startup)
+        return str(get_moose_models_directory())
+    except ImportError:
+        # Standalone moosez: use original fallback chain
+        model_path = os.getenv("UNET_MODEL_PATH")
+        if model_path:
+            return os.path.abspath(os.path.expanduser(model_path))
+        
+        data_path = os.getenv("DATA_PATH")
+        if data_path:
+            return os.path.abspath(os.path.expanduser(os.path.join(data_path, 'models', 'nnunet_trained_models')))
+        
+        # Only reach moose_root fallback when running standalone without env vars
+        moose_root = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(moose_root, 'models', 'nnunet_trained_models')
 
 MOOSE_ROOT_PATH: str = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIRECTORY_PATH: str = _get_models_directory_path()
